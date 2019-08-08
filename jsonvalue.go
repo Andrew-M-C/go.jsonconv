@@ -1,12 +1,12 @@
 package jsonconv
 
 import (
-	"github.com/buger/jsonparser"
-	// "github.com/Andrew-M-C/go-tools/log"
 	"bytes"
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/buger/jsonparser"
 )
 
 // data definitions same as jsonparser
@@ -73,12 +73,15 @@ func stringFromEscapedBytes(input []byte) (string, error) {
 				}
 			case 'u':
 				// parse unicode
+				if i+5 > len(s) {
+					return "", JsonFormatError
+				}
 				sub_str := s[i+1 : i+5]
 				unicode, err := strconv.ParseInt(sub_str, 16, 32)
 				if err != nil {
 					// err
 					// log.Error("err: %s", err.Error())
-					return "", JsonFormatError
+					return "", err
 				} else {
 					skip = 4
 					b.WriteRune(rune(unicode))
@@ -228,14 +231,15 @@ func NewFromString(s string) (*JsonValue, error) {
 // parse functions
 
 func (obj *JsonValue) parseObject(data []byte) error {
-	add_child := func(obj *JsonValue, key []byte, child *JsonValue) {
+	add_child := func(obj *JsonValue, key []byte, child *JsonValue) error {
 		key_str, key_err := stringFromEscapedBytes(key)
 		if key_err == nil {
 			obj.objChildren[key_str] = child
 		}
+		return key_err
 	}
 
-	jsonparser.ObjectEach(data, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
+	err := jsonparser.ObjectEach(data, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
 		// log.Debug("----------")
 		// log.Debug("key: %s", string(key))
 		// log.Debug("value: %s", string(value))
@@ -243,27 +247,44 @@ func (obj *JsonValue) parseObject(data []byte) error {
 		case jsonparser.String:
 			// log.Debug("string")
 			str_value, err := stringFromEscapedBytes(value)
-			if err == nil {
-				child := NewString(str_value)
-				add_child(obj, key, child)
+			if err != nil {
+				return err
+			}
+			child := NewString(str_value)
+			err = add_child(obj, key, child)
+			if err != nil {
+				return err
 			}
 		case jsonparser.Number:
 			// log.Debug("number")
+			var err error
 			child := new(JsonValue)
 			str_value := string(value)
 			child.valueType = Number
-			child.intValue, _ = strconv.ParseInt(str_value, 10, 64)
-			child.floatValue, _ = strconv.ParseFloat(str_value, 64)
-			add_child(obj, key, child)
+			child.intValue, err = strconv.ParseInt(str_value, 10, 64)
+			if err != nil {
+				return nil
+			}
+			child.floatValue, err = strconv.ParseFloat(str_value, 64)
+			if err != nil {
+				return nil
+			}
+			err = add_child(obj, key, child)
+			if err != nil {
+				return err
+			}
 		case jsonparser.Object:
 			// log.Debug("object")
 			child := NewObject()
 			err := child.parseObject(value)
 			if err != nil {
 				// log.Error("Failed to parse object: %s", err.Error())
-			} else {
-				// log.Debug("%s ---- object size: %d", string(key), child.Length())
-				add_child(obj, key, child)
+				return err
+			}
+			// log.Debug("%s ---- object size: %d", string(key), child.Length())
+			err = add_child(obj, key, child)
+			if err != nil {
+				return err
 			}
 		case jsonparser.Array:
 			// log.Debug("array")
@@ -271,38 +292,60 @@ func (obj *JsonValue) parseObject(data []byte) error {
 			err := child.parseArray(value)
 			if err != nil {
 				// log.Error("Failed to parse array: %s", err.Error())
-			} else {
-				// log.Debug("%s ---- array size: %d", string(key), child.Length())
-				add_child(obj, key, child)
+				return err
+			}
+			// log.Debug("%s ---- array size: %d", string(key), child.Length())
+			err = add_child(obj, key, child)
+			if err != nil {
+				return err
 			}
 		case jsonparser.Boolean:
 			// log.Debug("bool")
 			b, err := strconv.ParseBool(string(value))
-			if err == nil {
-				child := NewBool(b)
-				add_child(obj, key, child)
+			if err != nil {
+				return err
+			}
+			child := NewBool(b)
+			err = add_child(obj, key, child)
+			if err != nil {
+				return err
 			}
 		case jsonparser.Null:
 			// log.Debug("null")
 			child := NewNull()
-			add_child(obj, key, child)
+			err := add_child(obj, key, child)
+			if err != nil {
+				return err
+			}
 		default:
 			// log.Debug("Invalid type: %d", int(dataType))
 		}
 		return nil
 	})
-	return nil
+	return err
 }
 
-func (obj *JsonValue) parseArray(data []byte) error {
+func (obj *JsonValue) parseArray(data []byte) (err error) {
+	// check ending quote
+	{
+		l := len(data)
+		if l < 2 {
+			return JsonFormatError
+		}
+		if data[l-1] != byte(']') {
+			return JsonFormatError
+		}
+	}
 	jsonparser.ArrayEach(data, func(value []byte, dataType jsonparser.ValueType, _ int, _ error) {
 		switch dataType {
 		case jsonparser.String:
-			str_value, err := stringFromEscapedBytes(value)
-			if err == nil {
-				child := NewString(str_value)
-				obj.arrChildren = append(obj.arrChildren, child)
+			str_value, loc_err := stringFromEscapedBytes(value)
+			if loc_err != nil {
+				err = loc_err
+				return
 			}
+			child := NewString(str_value)
+			obj.arrChildren = append(obj.arrChildren, child)
 		case jsonparser.Number:
 			child := new(JsonValue)
 			str_value := string(value)
@@ -312,29 +355,33 @@ func (obj *JsonValue) parseArray(data []byte) error {
 			obj.arrChildren = append(obj.arrChildren, child)
 		case jsonparser.Object:
 			child := NewObject()
-			err := child.parseObject(value)
-			if err == nil {
-				obj.arrChildren = append(obj.arrChildren, child)
+			err = child.parseObject(value)
+			if err != nil {
+				return
 			}
+			obj.arrChildren = append(obj.arrChildren, child)
 		case jsonparser.Array:
 			child := NewArray()
-			err := child.parseArray(value)
-			if err == nil {
-				obj.arrChildren = append(obj.arrChildren, child)
+			err = child.parseArray(value)
+			if err != nil {
+				return
 			}
+			obj.arrChildren = append(obj.arrChildren, child)
 		case jsonparser.Boolean:
-			b, err := strconv.ParseBool(string(value))
-			if err == nil {
-				child := NewBool(b)
-				obj.arrChildren = append(obj.arrChildren, child)
+			b, loc_err := strconv.ParseBool(string(value))
+			if loc_err != nil {
+				err = loc_err
+				return
 			}
+			child := NewBool(b)
+			obj.arrChildren = append(obj.arrChildren, child)
 		case jsonparser.Null:
 			child := NewNull()
 			obj.arrChildren = append(obj.arrChildren, child)
 		}
 		return
 	})
-	return nil
+	return
 }
 
 // ====================

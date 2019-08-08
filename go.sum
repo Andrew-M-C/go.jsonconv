@@ -1,2 +1,4 @@
+github.com/Andrew-M-C/go-tools v0.0.0-20190709102825-4d49930dd4e8 h1:5Ngj/2uLEdT28+rPEeGG7+Ja4hBitXb8qaO32dhjjyg=
+github.com/Andrew-M-C/go-tools v0.0.0-20190709102825-4d49930dd4e8/go.mod h1:oh2nVwHckdF8ik7b2Q5jyz9zzFlsacRExoUOrV+NHSI=
 github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23 h1:D21IyuvjDCshj1/qq+pCNd3VZOAEI9jy6Bi131YlXgI=
 github.com/buger/jsonparser v0.0.0-20181115193947-bf1c66bbce23/go.mod h1:bbYlZJ7hK1yFx9hf58LP0zeX7UjIGs20ufpu3evjr+s=
