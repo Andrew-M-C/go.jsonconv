@@ -29,6 +29,7 @@ array", true, null],
 			]
 		},
 		56789,
+		123.456,
 		false,
 		null
 	]
@@ -95,10 +96,12 @@ func TestNewFromString(t *testing.T) {
 			r, _ := o.MarshalToString()
 			t.Errorf("object parsed: %s", r)
 		} else {
-			t.Logf("got expected message %v", err)
+			// t.Logf("got expected message %v", err)
 		}
 	}
 
+	func_test_err(`{"int": 123\\}`)
+	func_test_err(`{"foat": 123.\\}`)
 	func_test_err(`{"string\": ""}`)
 	func_test_err(`{"string": "\"}`)
 	func_test_err(`{"string": "\uoooo"}`)
@@ -106,5 +109,8 @@ func TestNewFromString(t *testing.T) {
 	func_test_err(`[hahaha`)
 	func_test_err(`[`)
 	func_test_err(`["string", 12345\, ]`)
+	func_test_err(`["string", 123.45\, ]`)
 	func_test_err(`["\u\\"]`)
+	func_test_err(`{"string}`)
+	func_test_err(`[{"string}]`)
 }

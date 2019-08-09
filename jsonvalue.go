@@ -2,6 +2,8 @@ package jsonconv
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -261,18 +263,25 @@ func (obj *JsonValue) parseObject(data []byte) error {
 			child := new(JsonValue)
 			str_value := string(value)
 			child.valueType = Number
-			child.intValue, err = strconv.ParseInt(str_value, 10, 64)
-			if err != nil {
-				return nil
-			}
-			child.floatValue, err = strconv.ParseFloat(str_value, 64)
-			if err != nil {
-				return nil
+
+			if strings.Contains(str_value, ".") {
+				child.floatValue, err = strconv.ParseFloat(str_value, 64)
+				if err != nil {
+					return err
+				}
+				child.intValue = int64(child.floatValue)
+			} else {
+				child.intValue, err = strconv.ParseInt(str_value, 10, 64)
+				if err != nil {
+					return err
+				}
+				child.floatValue = float64(child.intValue)
 			}
 			err = add_child(obj, key, child)
 			if err != nil {
 				return err
 			}
+
 		case jsonparser.Object:
 			// log.Debug("object")
 			child := NewObject()
@@ -318,7 +327,9 @@ func (obj *JsonValue) parseObject(data []byte) error {
 				return err
 			}
 		default:
+			msg := fmt.Sprintf("Invalid type: %d", int(dataType))
 			// log.Debug("Invalid type: %d", int(dataType))
+			return errors.New(msg)
 		}
 		return nil
 	})
@@ -346,13 +357,27 @@ func (obj *JsonValue) parseArray(data []byte) (err error) {
 			}
 			child := NewString(str_value)
 			obj.arrChildren = append(obj.arrChildren, child)
+
 		case jsonparser.Number:
 			child := new(JsonValue)
 			str_value := string(value)
 			child.valueType = Number
-			child.intValue, _ = strconv.ParseInt(str_value, 10, 64)
-			child.floatValue, _ = strconv.ParseFloat(str_value, 64)
+
+			if strings.Contains(str_value, ".") {
+				child.floatValue, err = strconv.ParseFloat(str_value, 64)
+				if err != nil {
+					return
+				}
+				child.intValue = int64(child.floatValue)
+			} else {
+				child.intValue, err = strconv.ParseInt(str_value, 10, 64)
+				if err != nil {
+					return
+				}
+				child.floatValue = float64(child.intValue)
+			}
 			obj.arrChildren = append(obj.arrChildren, child)
+
 		case jsonparser.Object:
 			child := NewObject()
 			err = child.parseObject(value)
@@ -378,6 +403,11 @@ func (obj *JsonValue) parseArray(data []byte) (err error) {
 		case jsonparser.Null:
 			child := NewNull()
 			obj.arrChildren = append(obj.arrChildren, child)
+		default:
+			msg := fmt.Sprintf("Invalid type: %d", int(dataType))
+			// log.Debug("Invalid type: %d", int(dataType))
+			err = errors.New(msg)
+			return
 		}
 		return
 	})
